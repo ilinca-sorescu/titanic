@@ -67,8 +67,9 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(9, 512)
         self.fc2 = nn.Linear(512, 512)
         self.fc3 = nn.Linear(512, 512)
-        self.fc4 = nn.Linear(512, 2)
-        self.dropout = nn.Dropout(0.2)
+        self.fc4 = nn.Linear(512, 512)
+        self.fc5 = nn.Linear(512, 2)
+        self.dropout = nn.Dropout(0.3)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -77,17 +78,19 @@ class Net(nn.Module):
         x = self.dropout(x)
         x = F.relu(self.fc3(x))
         x = self.dropout(x)
-        x = self.fc4(x)
+        x = F.relu(self.fc4(x))
+        x = self.dropout(x)
+        x = self.fc5(x)
         return x
 model = Net()
 print(model)
 
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.02)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.05)
 
 
 batch_size = 64
-n_epochs = 1000
+n_epochs = 2000
 batch_no = len(X_train) // batch_size
 
 train_loss = 0
