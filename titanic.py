@@ -61,15 +61,19 @@ y_train = df_train.loc[:, "Survived"].values
 df_train.drop(["Survived"], axis=1, inplace=True)
 X_train = df_train.values
 
+y_test = df_test.loc[:, "Survived"].values
+df_test.drop(["Survived"], axis=1, inplace=True)
+X_test = df_test.values
+
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, dropout):
         super(Net, self).__init__()
         self.fc1 = nn.Linear(9, 512)
         self.fc2 = nn.Linear(512, 512)
         self.fc3 = nn.Linear(512, 512)
         self.fc4 = nn.Linear(512, 512)
         self.fc5 = nn.Linear(512, 2)
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -82,63 +86,88 @@ class Net(nn.Module):
         x = self.dropout(x)
         x = self.fc5(x)
         return x
-model = Net()
-print(model)
-
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.05)
 
 
-batch_size = 64
-n_epochs = 2000
-batch_no = len(X_train) // batch_size
+lrs = [0.03, 0.05, 0.07, 0.1]
+wds = [0, 0.02, 0.05]
+dropouts = [0, 0.1, 0.2, 0.3]
+n_epochss = [600, 1000, 1600, 2000, 3000]
 
-train_loss = 0
-train_loss_min = np.Inf
-for epoch in range(n_epochs):
-    for i in range(batch_no):
-        start = i*batch_size
-        end = start+batch_size
-        x_var = Variable(torch.FloatTensor(X_train[start:end]))
-        y_var = Variable(torch.LongTensor(y_train[start:end]))
+best_accuracy = 0
 
-        optimizer.zero_grad()
-        output = model(x_var)
-        loss = criterion(output,y_var)
-        loss.backward()
-        optimizer.step()
+for lr in lrs:
+    for wd in wds:
+        for dropout in dropouts:
+            for n_epochs in n_epochss:
 
-        values, labels = torch.max(output, 1)
-        num_right = np.sum(labels.data.numpy() == y_train[start:end])
-        train_loss += loss.item()*batch_size
 
-    train_loss = train_loss / len(X_train)
-    if train_loss <= train_loss_min:
-        #print("Validation loss decreased ({:6f} ===> {:6f}). Saving the model...".format(train_loss_min,train_loss))
-        torch.save(model.state_dict(), "model.pt")
-        train_loss_min = train_loss
+               model = Net(dropout)
+               print(model)
+               
+               criterion = nn.CrossEntropyLoss()
+               optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=wd)
+               
+               
+               batch_size = 64
+               batch_no = len(X_train) // batch_size
+               
+               train_loss = 0
+               train_loss_min = np.Inf
+               for epoch in range(n_epochs):
+                   for i in range(batch_no):
+                       start = i*batch_size
+                       end = start+batch_size
+                       x_var = Variable(torch.FloatTensor(X_train[start:end]))
+                       y_var = Variable(torch.LongTensor(y_train[start:end]))
+               
+                       optimizer.zero_grad()
+                       output = model(x_var)
+                       loss = criterion(output,y_var)
+                       loss.backward()
+                       optimizer.step()
+               
+                       values, labels = torch.max(output, 1)
+                       num_right = np.sum(labels.data.numpy() == y_train[start:end])
+                       train_loss += loss.item()*batch_size
+               
+                   train_loss = train_loss / len(X_train)
+                   if train_loss <= train_loss_min:
+                       #print("Validation loss decreased ({:6f} ===> {:6f}). Saving the model...".format(train_loss_min,train_loss))
+                       torch.save(model.state_dict(), "model.pt")
+                       train_loss_min = train_loss
+               
+                   if epoch % 200 == 0:
+                       print('')
+                       print("Epoch: {} \tTrain Loss: {} \tTrain Accuracy: {}".format(epoch+1, train_loss,num_right / len(y_train[start:end]) ))
+               print('Training Ended! ')
+               
 
-    if epoch % 200 == 0:
-        print('')
-        print("Epoch: {} \tTrain Loss: {} \tTrain Accuracy: {}".format(epoch+1, train_loss,num_right / len(y_train[start:end]) ))
-print('Training Ended! ')
+               x_var = Variable(torch.FloatTensor(X_test))
+               y_var = Variable(torch.LongTensor(y_test))
+               output = model(x_var)
+               values, labels = torch.max(output, 1)
+               num_right = np.sum(labels.data.numpy() == y_test)
+               test_accuracy = num_right/len(y_test)
+               print("Test Accuracy: ", test_accuracy)
+               if test_accuracy > best_accuracy:
+                   torch.save(model.state_dict(), "best_model.pt")
+                   best_accuracy = test_accuracy
+                   with open("parameters.txt", "a") as f:
+                       line = "Accuracy: " + str(best_accuracy)
+                       line += " lr: " + str(lr)
+                       line += " wd: "+ str(wd) 
+                       line += " epochs: " + str(n_epochs)
+                       line += " dropout: " + str(dropout) + "\n"
+                       f.write(line)
+               
 
-y_test = df_test.loc[:, "Survived"].values
-df_test.drop(["Survived"], axis=1, inplace=True)
-X_test = df_test.values
-x_var = Variable(torch.FloatTensor(X_test))
-y_var = Variable(torch.LongTensor(y_test))
-output = model(x_var)
-values, labels = torch.max(output, 1)
-num_right = np.sum(labels.data.numpy() == y_test)
-print("Test Accuracy: ", num_right/len(y_test))
 
 X_predict = df_unlabelled.values
 X_predict_var = Variable(torch.FloatTensor(X_predict), requires_grad=False) 
 with torch.no_grad():
-    predict_result = model(X_predict_var)
+    predict_result = best_model(X_predict_var)
 values, labels = torch.max(predict_result, 1)
 survived = labels.data.numpy()
 
 submission = pd.DataFrame({'PassengerId': df_sub['PassengerId'], 'Survived': survived})
-submission.to_csv('submission.csv', index=False)
+submission.to_csv('best_submission.csv', index=False)
