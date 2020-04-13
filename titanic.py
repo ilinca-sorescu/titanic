@@ -53,17 +53,17 @@ df_labelled = pd.concat([df_labelled,labels],axis=1)
 features = df_labelled.iloc[:,:-1].columns.tolist()
 target   = df_labelled.loc[:, 'Survived'].name
 
-# train/valid/test split
+# train/validation split
 df_train = df_labelled.iloc[:701, :]
-df_test = df_labelled.iloc[701:, :]
+df_valid = df_labelled.iloc[701:, :]
 
 y_train = df_train.loc[:, "Survived"].values
 df_train.drop(["Survived"], axis=1, inplace=True)
 X_train = df_train.values
 
-y_test = df_test.loc[:, "Survived"].values
-df_test.drop(["Survived"], axis=1, inplace=True)
-X_test = df_test.values
+y_valid = df_valid.loc[:, "Survived"].values
+df_valid.drop(["Survived"], axis=1, inplace=True)
+X_valid = df_valid.values
 
 class Net(nn.Module):
     def __init__(self, dropout):
@@ -71,8 +71,7 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(9, 512)
         self.fc2 = nn.Linear(512, 512)
         self.fc3 = nn.Linear(512, 512)
-        self.fc4 = nn.Linear(512, 512)
-        self.fc5 = nn.Linear(512, 2)
+        self.fc4 = nn.Linear(512, 2)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -82,24 +81,21 @@ class Net(nn.Module):
         x = self.dropout(x)
         x = F.relu(self.fc3(x))
         x = self.dropout(x)
-        x = F.relu(self.fc4(x))
-        x = self.dropout(x)
-        x = self.fc5(x)
+        x = self.fc4(x)
         return x
 
 
-lrs = [0.03, 0.05, 0.07, 0.1]
-wds = [0, 0.02, 0.05]
 dropouts = [0, 0.1, 0.2, 0.3]
 n_epochss = [600, 1000, 1600, 2000, 3000]
 
 best_accuracy = 0
 
-for lr in lrs:
-    for wd in wds:
-        for dropout in dropouts:
-            for n_epochs in n_epochss:
-
+for n_epochs in n_epochss:
+    for dropout in dropouts:
+        for wd in range(3):
+            wd = 10**np.random.uniform(low=-5, high=-1)
+            for lr in range(4):
+               lr = 10**np.random.uniform(low=-3, high=-1)
 
                model = Net(dropout)
                print(model)
@@ -141,17 +137,22 @@ for lr in lrs:
                        print("Epoch: {} \tTrain Loss: {} \tTrain Accuracy: {}".format(epoch+1, train_loss,num_right / len(y_train[start:end]) ))
                print('Training Ended! ')
                
+               line = " lr: " + str(lr)
+               line += " wd: "+ str(wd) 
+               line += " epochs: " + str(n_epochs)
+               line += " dropout: " + str(dropout)
+               print(line)
 
-               x_var = Variable(torch.FloatTensor(X_test))
-               y_var = Variable(torch.LongTensor(y_test))
+               x_var = Variable(torch.FloatTensor(X_valid))
+               y_var = Variable(torch.LongTensor(y_valid))
                output = model(x_var)
                values, labels = torch.max(output, 1)
-               num_right = np.sum(labels.data.numpy() == y_test)
-               test_accuracy = num_right/len(y_test)
-               print("Test Accuracy: ", test_accuracy)
-               if test_accuracy > best_accuracy:
+               num_right = np.sum(labels.data.numpy() == y_valid)
+               valid_accuracy = num_right/len(y_valid)
+               print("Validaion Accuracy: ", valid_accuracy)
+               if valid_accuracy > best_accuracy:
                    torch.save(model.state_dict(), "best_model.pt")
-                   best_accuracy = test_accuracy
+                   best_accuracy = valid_accuracy
                    with open("parameters.txt", "a") as f:
                        line = "Accuracy: " + str(best_accuracy)
                        line += " lr: " + str(lr)
@@ -159,15 +160,13 @@ for lr in lrs:
                        line += " epochs: " + str(n_epochs)
                        line += " dropout: " + str(dropout) + "\n"
                        f.write(line)
-               
+                       
+                       X_predict = df_unlabelled.values
+                       X_predict_var = Variable(torch.FloatTensor(X_predict), requires_grad=False) 
+                       with torch.no_grad():
+                           predict_result = model(X_predict_var)
+                           values, labels = torch.max(predict_result, 1)
+                           survived = labels.data.numpy()
 
-
-X_predict = df_unlabelled.values
-X_predict_var = Variable(torch.FloatTensor(X_predict), requires_grad=False) 
-with torch.no_grad():
-    predict_result = best_model(X_predict_var)
-values, labels = torch.max(predict_result, 1)
-survived = labels.data.numpy()
-
-submission = pd.DataFrame({'PassengerId': df_sub['PassengerId'], 'Survived': survived})
-submission.to_csv('best_submission.csv', index=False)
+                           submission = pd.DataFrame({'PassengerId': df_sub['PassengerId'], 'Survived': survived})
+                           submission.to_csv('submission.csv', index=False)
